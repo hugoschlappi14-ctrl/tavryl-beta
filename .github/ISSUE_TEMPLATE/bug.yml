@@ -1,0 +1,31 @@
+name: Bug / Problème
+description: Report a problem in French or English / Signaler un problème en français ou anglais
+title: "[0.18.0] "
+body:
+  - type: markdown
+    attributes:
+      value: "FR : décris le problème sans données personnelles ni code d'accès. EN: describe the issue without personal data or access codes."
+  - type: input
+    id: context
+    attributes:
+      label: Class, level, location / Classe, niveau, lieu
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you do? / Qu'as-tu fait ?
+      description: Steps to reproduce / Étapes pour reproduire
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual result / Résultat attendu et obtenu
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Optional screenshot or hardware / Capture ou configuration facultative
+      description: Do not attach save files, private messages or personal data. / Ne joins pas de sauvegarde, de message privé ni de donnée personnelle.
