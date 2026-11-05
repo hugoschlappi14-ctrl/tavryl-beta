@@ -1,0 +1,7 @@
+.git
+images
+**/node_modules
+**/test
+*.key
+*.env
+*-private.json
