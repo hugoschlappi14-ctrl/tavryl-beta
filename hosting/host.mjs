@@ -3,13 +3,17 @@ import net from 'node:net';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { StateStore } from './state.mjs';
+import { AdminStore } from './admin-store.mjs';
+import { adminHandler,body,json } from './admin-http.mjs';
 
 const port=Number(process.env.PORT || 10000);
 const dataRoot=process.env.XDG_DATA_HOME || '/tmp/tavryl-data';
 const statePath=process.env.TAVRYL_STATE_PATH || path.join(dataRoot,'Godot/app_userdata/ProjectAether/serveur_aether');
-let ready=false, stopping=false, child, store, timer;
+let ready=false, stopping=false, child, store, timer, admin;
+const handleAdmin=adminHandler(()=>admin);
 const sockets=new Set();
-const httpServer=http.createServer((req,res)=>{
+const httpServer=http.createServer(async(req,res)=>{
+  if(await handleAdmin(req,res))return;
   const allowed=req.method==='GET' && ['/', '/healthz'].includes(req.url);
   res.writeHead(allowed ? (ready ? 200 : 503) : 404,{
     'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
@@ -36,6 +40,15 @@ httpServer.on('upgrade',(req,socket,head)=>{
   });
 });
 const local=http.createServer(async(req,res)=>{
+  if(req.method==='POST' && req.url?.startsWith('/moderation/') && admin && !stopping) {
+    try {
+      const value=await body(req);
+      if(req.url==='/moderation/check')json(res,200,await admin.allowed(value.accountId));
+      else if(req.url==='/moderation/presence')json(res,200,{bans:await admin.presence(value.players)});
+      else json(res,404,{error:'not_found'});
+    } catch {json(res,503,{error:'moderation_unavailable'});}
+    return;
+  }
   if(req.method!=='POST' || req.url!=='/commit' || stopping) {res.writeHead(404).end(); return;}
   try {await store.commit(); res.writeHead(204).end();}
   catch {res.writeHead(503).end(); void shutdown(75,'state commit failed');}
@@ -61,6 +74,7 @@ try {
   store=new StateStore(process.env.DATABASE_URL,statePath);
   store.db.on('error',()=>void shutdown(75,'database connection lost'));
   const restored=await store.open();
+  admin=new AdminStore(store.db);await admin.open();
   console.log('TAVRYL_STATE_RESTORED files='+restored);
   await new Promise((resolve,reject)=>{local.once('error',reject);local.listen(7001,'127.0.0.1',resolve);});
   const executable=process.env.TAVRYL_EXECUTABLE || '/app/tavryl-server';
@@ -68,7 +82,7 @@ try {
   const userArgs=JSON.parse(process.env.TAVRYL_USER_ARGS || '["--server"]');
   child=spawn(executable,[...extra,'--headless','--audio-driver','Dummy','--',...userArgs,'--port=7000'],{
     windowsHide:true,stdio:['ignore','pipe','pipe'],
-    env:{...process.env,XDG_DATA_HOME:dataRoot,TAVRYL_REVERSE_PROXY:'1',TAVRYL_PERSISTENCE:'postgres'}});
+    env:{...process.env,TAVRYL_ADMIN_KEY:'',XDG_DATA_HOME:dataRoot,TAVRYL_REVERSE_PROXY:'1',TAVRYL_PERSISTENCE:'postgres',TAVRYL_MODERATION:'1'}});
   let buffer='';
   child.stdout.on('data',chunk=>{
     buffer+=chunk.toString();
