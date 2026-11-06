@@ -17,7 +17,7 @@ const httpServer=http.createServer(async(req,res)=>{
   const allowed=req.method==='GET' && ['/', '/healthz'].includes(req.url);
   res.writeHead(allowed ? (ready ? 200 : 503) : 404,{
     'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18} : {error:'not_found'}));
+  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18,version:'0.18.7',publicBeta:process.env.TAVRYL_PUBLIC_BETA==='1'} : {error:'not_found'}));
 });
 httpServer.headersTimeout=10000; httpServer.requestTimeout=10000;
 httpServer.on('upgrade',(req,socket,head)=>{
@@ -69,7 +69,7 @@ async function shutdown(code, reason) {
 process.on('SIGTERM',()=>void shutdown(0,'platform shutdown'));
 process.on('SIGINT',()=>void shutdown(0,'operator shutdown'));
 try {
-  if((process.env.TAVRYL_BETA_KEY||'').length<12) throw Error('beta access code missing');
+  if(process.env.TAVRYL_PUBLIC_BETA!=='1' && (process.env.TAVRYL_BETA_KEY||'').length<12) throw Error('beta access code missing');
   httpServer.listen(port,'0.0.0.0');
   store=new StateStore(process.env.DATABASE_URL,statePath);
   store.db.on('error',()=>void shutdown(75,'database connection lost'));

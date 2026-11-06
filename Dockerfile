@@ -7,12 +7,12 @@ WORKDIR /app
 COPY hosting/package.json hosting/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 RUN curl --fail --location --retry 3 \
-    https://github.com/hugoschlappi14-ctrl/tavryl-beta/releases/download/v0.18.3/tavryl-server \
+    https://github.com/hugoschlappi14-ctrl/tavryl-beta/releases/download/v0.18.7/tavryl-server \
     --output /app/tavryl-server \
-    && echo 'e2ab8754a06fc8cef4884fb7dd217ea1b2dc73226d57ac035dd9968d33f36116  /app/tavryl-server' | sha256sum --check \
+    && echo '7f4b613b5a6a15f8820422540939cf71df2a9f0732ea8c9fd608cedc215fc6df  /app/tavryl-server' | sha256sum --check \
     && chmod 755 /app/tavryl-server
 COPY hosting/host.mjs hosting/state.mjs hosting/admin-store.mjs hosting/admin-http.mjs hosting/admin.html hosting/admin.js hosting/admin.css ./
-ENV NODE_ENV=production PORT=10000 XDG_DATA_HOME=/tmp/tavryl-data
+ENV TAVRYL_PUBLIC_BETA=1 NODE_ENV=production PORT=10000 XDG_DATA_HOME=/tmp/tavryl-data
 USER node
 EXPOSE 10000
 CMD ["node", "host.mjs"]
