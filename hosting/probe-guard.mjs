@@ -2,9 +2,9 @@ import http from 'node:http';
 import net from 'node:net';
 import {validUpgrade} from './socket-upgrade.mjs';
 
-export function forwardUpgrade(req,socket,head,port,onClose=()=>{}) {
+export function forwardUpgrade(req,socket,head,port,onClose=()=>{},host='127.0.0.1') {
   socket.pause();socket.setNoDelay(true);
-  const upstream=net.connect(port,'127.0.0.1');upstream.setNoDelay(true);
+  const upstream=net.connect(port,host);upstream.setNoDelay(true);
   const cleanup=()=>{onClose();socket.destroy();upstream.destroy();};
   socket.on('error',cleanup);socket.on('close',cleanup);
   upstream.on('error',cleanup);upstream.on('close',cleanup);
@@ -20,7 +20,7 @@ export function forwardUpgrade(req,socket,head,port,onClose=()=>{}) {
 
 // The former game port receives HTTP probes as well as WebSocket traffic.
 // Keep it as a protocol boundary: HTTP is handled here, never by Godot.
-export function createProbeGuard(gamePort,{log=console.log}={}) {
+export function createProbeGuard(gamePort,{log=console.log,gameHost='127.0.0.1'}={}) {
   let total=0,lastLog=0;
   const sockets=new Set();
   function record(req,kind) {
@@ -40,7 +40,7 @@ export function createProbeGuard(gamePort,{log=console.log}={}) {
     if(!validUpgrade(req.headers)||req.method!=='GET'||req.url!=='/'||sockets.size>=24){
       record(req,'invalid_upgrade');socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');return;
     }
-    sockets.add(socket);forwardUpgrade(req,socket,head,gamePort,()=>sockets.delete(socket));
+    sockets.add(socket);forwardUpgrade(req,socket,head,gamePort,()=>sockets.delete(socket),gameHost);
   });
   server.headersTimeout=5000;server.requestTimeout=5000;
   server.probeCount=()=>total;

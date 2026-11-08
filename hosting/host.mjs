@@ -11,7 +11,9 @@ const port=Number(process.env.PORT || 10000);
 const dataRoot=process.env.XDG_DATA_HOME || '/tmp/tavryl-data';
 const statePath=process.env.TAVRYL_STATE_PATH || path.join(dataRoot,'Godot/app_userdata/ProjectAether/serveur_aether');
 const gamePort=7002;
-let ready=false, stopping=false, child, store, timer, admin, probeGuard;
+const gameHost='127.0.0.2';
+let ready=false, stopping=false, child, store, timer, admin;
+const probeGuards=[];
 const handleAdmin=adminHandler(()=>admin);
 const sockets=new Set();
 const httpServer=http.createServer(async(req,res)=>{
@@ -19,7 +21,7 @@ const httpServer=http.createServer(async(req,res)=>{
   const allowed=req.method==='GET' && ['/', '/healthz'].includes(req.url);
   res.writeHead(allowed ? (ready ? 200 : 503) : 404,{
     'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18,version:'0.18.13',hostRevision:'probe-guard-1',publicBeta:process.env.TAVRYL_PUBLIC_BETA==='1'} : {error:'not_found'}));
+  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18,version:'0.18.14',hostRevision:'probe-guard-2',publicBeta:process.env.TAVRYL_PUBLIC_BETA==='1'} : {error:'not_found'}));
 });
 httpServer.headersTimeout=10000; httpServer.requestTimeout=10000;
 httpServer.on('upgrade',(req,socket,head)=>{
@@ -30,7 +32,7 @@ httpServer.on('upgrade',(req,socket,head)=>{
     socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n'); return;
   }
   sockets.add(socket);
-  forwardUpgrade(req,socket,head,gamePort,()=>sockets.delete(socket));
+  forwardUpgrade(req,socket,head,gamePort,()=>sockets.delete(socket),gameHost);
 });
 const local=http.createServer(async(req,res)=>{
   if(req.method==='POST' && req.url?.startsWith('/moderation/') && admin && !stopping) {
@@ -52,7 +54,7 @@ async function shutdown(code, reason) {
   if(stopping) return; stopping=true; ready=false; clearInterval(timer);
   console.log('TAVRYL_HOST_STOP',reason);
   for(const socket of sockets) socket.destroy();
-  probeGuard?.stop();
+  for(const guard of probeGuards)guard.stop();
   const exited=child && new Promise(resolve=>child.once('exit',resolve));
   child?.kill('SIGTERM');
   if(exited) await Promise.race([exited,new Promise(resolve=>setTimeout(resolve,1500))]);
@@ -71,14 +73,16 @@ try {
   admin=new AdminStore(store.db);await admin.open();
   console.log('TAVRYL_STATE_RESTORED files='+restored);
   await new Promise((resolve,reject)=>{local.once('error',reject);local.listen(7001,'127.0.0.1',resolve);});
-  probeGuard=createProbeGuard(gamePort);
-  await new Promise((resolve,reject)=>{probeGuard.once('error',reject);probeGuard.listen(7000,'127.0.0.1',resolve);});
+  for(const probePort of [7000,gamePort]) {
+    const guard=createProbeGuard(gamePort,{gameHost});probeGuards.push(guard);
+    await new Promise((resolve,reject)=>{guard.once('error',reject);guard.listen(probePort,'127.0.0.1',resolve);});
+  }
   const executable=process.env.TAVRYL_EXECUTABLE || '/app/tavryl-server';
   const extra=JSON.parse(process.env.TAVRYL_ENGINE_ARGS || '[]');
   const userArgs=JSON.parse(process.env.TAVRYL_USER_ARGS || '["--server"]').filter(arg=>!String(arg).startsWith('--port='));
   child=spawn(executable,[...extra,'--headless','--audio-driver','Dummy','--',...userArgs,'--port='+gamePort],{
     windowsHide:true,stdio:['ignore','pipe','pipe'],
-    env:{...process.env,TAVRYL_ADMIN_KEY:'',XDG_DATA_HOME:dataRoot,TAVRYL_REVERSE_PROXY:'1',TAVRYL_PERSISTENCE:'postgres',TAVRYL_MODERATION:'1'}});
+    env:{...process.env,TAVRYL_ADMIN_KEY:'',XDG_DATA_HOME:dataRoot,TAVRYL_REVERSE_PROXY:'1',TAVRYL_GAME_LOOPBACK:gameHost,TAVRYL_PERSISTENCE:'postgres',TAVRYL_MODERATION:'1'}});
   let buffer='';
   child.stdout.on('data',chunk=>{
     buffer+=chunk.toString();
