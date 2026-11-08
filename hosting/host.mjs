@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { StateStore } from './state.mjs';
 import { AdminStore } from './admin-store.mjs';
 import { adminHandler,body,json } from './admin-http.mjs';
+import { validUpgrade } from './socket-upgrade.mjs';
 
 const port=Number(process.env.PORT || 10000);
 const dataRoot=process.env.XDG_DATA_HOME || '/tmp/tavryl-data';
@@ -21,6 +22,9 @@ const httpServer=http.createServer(async(req,res)=>{
 });
 httpServer.headersTimeout=10000; httpServer.requestTimeout=10000;
 httpServer.on('upgrade',(req,socket,head)=>{
+	if(!validUpgrade(req.headers)) {
+		socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n'); return;
+	}
   if(!ready || req.method!=='GET' || req.url!=='/' || req.headers.upgrade?.toLowerCase()!=='websocket' || sockets.size>=24) {
     socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n'); return;
   }
