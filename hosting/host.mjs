@@ -21,7 +21,7 @@ const httpServer=http.createServer(async(req,res)=>{
   const allowed=req.method==='GET' && ['/', '/healthz'].includes(req.url);
   res.writeHead(allowed ? (ready ? 200 : 503) : 404,{
     'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18,version:'0.18.20',hostRevision:'probe-guard-2',publicBeta:process.env.TAVRYL_PUBLIC_BETA==='1'} : {error:'not_found'}));
+  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18,version:'0.18.21',hostRevision:'probe-guard-2',publicBeta:process.env.TAVRYL_PUBLIC_BETA==='1'} : {error:'not_found'}));
 });
 httpServer.headersTimeout=10000; httpServer.requestTimeout=10000;
 httpServer.on('upgrade',(req,socket,head)=>{
