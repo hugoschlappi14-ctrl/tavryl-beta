@@ -1,6 +1,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { StateStore } from './state.mjs';
 import { AdminStore } from './admin-store.mjs';
 import { adminHandler,body,json } from './admin-http.mjs';
@@ -14,6 +15,26 @@ const gamePort=7002;
 const gameHost='127.0.0.2';
 let ready=false, stopping=false, child, store, timer, admin;
 const probeGuards=[];
+let cpuSample;
+let cpuReading = false;
+async function sampleCpu() {
+  if (cpuReading) return;
+  cpuReading = true;
+  try {
+    const raw = await readFile('/sys/fs/cgroup/cpu.stat', 'utf8');
+    const stats = Object.fromEntries(raw.trim().split('\n').map(line => line.trim().split(/\s+/)));
+    const now = {at:Date.now(), throttled:Number(stats.throttled_usec), usage:Number(stats.usage_usec)};
+    if (cpuSample && now.throttled - cpuSample.throttled >= 100000) {
+      console.log('TAVRYL_CPU_LIMIT window_ms='+(now.at-cpuSample.at)+
+        ' throttled_ms='+Math.round((now.throttled-cpuSample.throttled)/1000)+
+        ' cpu_ms='+Math.round((now.usage-cpuSample.usage)/1000));
+    }
+    cpuSample=now;
+  } catch { /* CPU accounting is optional on hosts without cgroup v2. */ }
+  finally { cpuReading=false; }
+}
+const cpuTimer=setInterval(()=>{if(ready && sockets.size>0)void sampleCpu();},1000);
+cpuTimer.unref();
 const handleAdmin=adminHandler(()=>admin);
 const sockets=new Set();
 const httpServer=http.createServer(async(req,res)=>{
@@ -21,7 +42,7 @@ const httpServer=http.createServer(async(req,res)=>{
   const allowed=req.method==='GET' && ['/', '/healthz'].includes(req.url);
   res.writeHead(allowed ? (ready ? 200 : 503) : 404,{
     'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18,version:'0.18.21',hostRevision:'probe-guard-2',publicBeta:process.env.TAVRYL_PUBLIC_BETA==='1'} : {error:'not_found'}));
+  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18,version:'0.18.22',hostRevision:'probe-guard-2',publicBeta:process.env.TAVRYL_PUBLIC_BETA==='1'} : {error:'not_found'}));
 });
 httpServer.headersTimeout=10000; httpServer.requestTimeout=10000;
 httpServer.on('upgrade',(req,socket,head)=>{
@@ -51,7 +72,7 @@ const local=http.createServer(async(req,res)=>{
 local.headersTimeout=5000; local.requestTimeout=5000;
 
 async function shutdown(code, reason) {
-  if(stopping) return; stopping=true; ready=false; clearInterval(timer);
+  if(stopping) return; stopping=true; ready=false; clearInterval(timer); clearInterval(cpuTimer);
   console.log('TAVRYL_HOST_STOP',reason);
   for(const socket of sockets) socket.destroy();
   for(const guard of probeGuards)guard.stop();
