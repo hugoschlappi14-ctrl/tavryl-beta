@@ -8,6 +8,7 @@ import { AdminStore } from './admin-store.mjs';
 import { adminHandler,body,json } from './admin-http.mjs';
 import { validUpgrade } from './socket-upgrade.mjs';
 import {createProbeGuard,forwardUpgrade} from './probe-guard.mjs';
+import {traceFlow} from './trace-flow.mjs';
 
 const port=Number(process.env.PORT || 10000);
 const dataRoot=process.env.XDG_DATA_HOME || '/tmp/tavryl-data';
@@ -55,7 +56,7 @@ const httpServer=http.createServer(async(req,res)=>{
   const allowed=req.method==='GET' && ['/', '/healthz'].includes(req.url);
   res.writeHead(allowed ? (ready ? 200 : 503) : 404,{
     'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18,version:'0.18.28',hostRevision:'state-cache-1',publicBeta:process.env.TAVRYL_PUBLIC_BETA==='1'} : {error:'not_found'}));
+  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18,version:'0.18.29',hostRevision:'flow-checkpoint-1',publicBeta:process.env.TAVRYL_PUBLIC_BETA==='1'} : {error:'not_found'}));
 });
 httpServer.headersTimeout=10000; httpServer.requestTimeout=10000;
 httpServer.on('upgrade',(req,socket,head)=>{
@@ -66,7 +67,10 @@ httpServer.on('upgrade',(req,socket,head)=>{
     socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n'); return;
   }
   sockets.add(socket);
-  forwardUpgrade(req,socket,head,gamePort,()=>sockets.delete(socket),gameHost);
+  const upstream=forwardUpgrade(req,socket,head,gamePort,()=>sockets.delete(socket),gameHost);
+  // Test relays can request numeric timing only, bounded to two simultaneous
+  // sockets and two minutes. Ordinary players incur no tracing work.
+  if(sockets.size<=2 && req.headers['x-tavryl-diagnostic']==='timing-v1')traceFlow(socket,upstream);
 });
 const local=http.createServer(async(req,res)=>{
   if(req.method==='POST' && req.url?.startsWith('/moderation/') && admin && !stopping) {
