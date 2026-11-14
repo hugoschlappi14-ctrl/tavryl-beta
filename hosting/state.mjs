@@ -1,8 +1,9 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
 
 export const files = ['comptes.cfg', 'social.cfg'];
+const fingerprint = s => [s.dev,s.ino,s.size,s.mtimeNs,s.ctimeNs].join(':');
 export function validateSnapshot(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw Error('Invalid snapshot');
   for (const [key, value] of Object.entries(data)) {
@@ -27,6 +28,9 @@ export class StateStore {
     this.directory = directory;
     this.revision = 0;
     this.last = '{}';
+    this.lastFiles = {};
+    this.fileVersions = new Map();
+    this.lastFullRead = 0;
     this.queue = Promise.resolve();
   }
   async open() {
@@ -39,6 +43,7 @@ export class StateStore {
     const data = validateSnapshot(row.files);
     this.revision = row.revision;
     this.last = JSON.stringify(data);
+    this.lastFiles = data;
     await mkdir(this.directory, {recursive:true, mode:0o700});
     for (const [name, content] of Object.entries(data)) {
       await writeFile(path.join(this.directory,name),content,{mode:0o600});
@@ -46,8 +51,21 @@ export class StateStore {
     }
     return Object.keys(data).length;
   }
-  commit() {
+  commit({background = false} = {}) {
     this.queue = this.queue.then(async () => {
+      // Only periodic checkpoints may take this shortcut. Explicit commits
+      // (new identity, social change, shutdown) always read and validate files.
+      // Godot replaces each file by rename. Inode + nanosecond timestamps and
+      // size detect replacement even when its content has the same length.
+      // A full read every 30 seconds also bounds metadata-cache lifetime.
+      const versions = new Map();
+      for (const name of files) {
+        try { versions.set(name, fingerprint(await stat(path.join(this.directory,name),{bigint:true}))); }
+        catch(error) { if(error.code !== 'ENOENT') throw error; }
+      }
+      if (background && performance.now()-this.lastFullRead < 30000 &&
+          versions.size === this.fileVersions.size &&
+          files.every(name => versions.get(name) === this.fileVersions.get(name))) return;
       const snapshot = {};
       for (const name of files) {
         for(let attempt=0;attempt<3;attempt++) {
@@ -60,8 +78,13 @@ export class StateStore {
       }
       validateSnapshot(snapshot);
       // A transient missing file during Godot's rename must never erase an account file.
-      for (const name of Object.keys(JSON.parse(this.last)))
+      for (const name of Object.keys(this.lastFiles))
         if (!(name in snapshot)) throw Error('State file disappeared');
+      // Keep the fingerprints from BEFORE the reads. A concurrent replacement
+      // then forces another read on the next checkpoint instead of being hidden.
+      this.fileVersions = versions;
+      this.lastFullRead = performance.now();
+      if (files.every(name => snapshot[name] === this.lastFiles[name])) return;
       const encoded = JSON.stringify(snapshot);
       if (encoded === this.last) return;
       const result = await this.db.query(`UPDATE tavryl_state SET files=$1, revision=revision+1,
@@ -69,6 +92,7 @@ export class StateStore {
       if (result.rowCount !== 1) throw Error('Another host owns a newer state revision');
       this.revision=result.rows[0].revision;
       this.last=encoded;
+      this.lastFiles=snapshot;
     });
     return this.queue;
   }

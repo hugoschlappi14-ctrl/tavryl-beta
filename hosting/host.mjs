@@ -2,6 +2,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { StateStore } from './state.mjs';
 import { AdminStore } from './admin-store.mjs';
 import { adminHandler,body,json } from './admin-http.mjs';
@@ -17,6 +18,8 @@ let ready=false, stopping=false, child, store, timer, admin;
 const probeGuards=[];
 let cpuSample;
 let cpuReading = false;
+const proxyDelay=monitorEventLoopDelay({resolution:20});
+proxyDelay.enable();
 async function sampleCpu() {
   if (cpuReading) return;
   cpuReading = true;
@@ -27,19 +30,23 @@ async function sampleCpu() {
     ]);
     const stats = Object.fromEntries(raw.trim().split('\n').map(line => line.trim().split(/\s+/)));
     const [runtime, wait] = mainThread.trim().split(/\s+/).map(Number);
-    const now = {at:Date.now(), throttled:Number(stats.throttled_usec), usage:Number(stats.usage_usec), runtime, wait};
-    if (cpuSample && now.throttled - cpuSample.throttled >= 100000) {
+    const proxyCpu=process.cpuUsage();
+    const now = {at:Date.now(), throttled:Number(stats.throttled_usec), usage:Number(stats.usage_usec), runtime, wait,
+      proxyCpu:proxyCpu.user+proxyCpu.system};
+    if (cpuSample && (now.throttled - cpuSample.throttled >= 100000 || proxyDelay.max >= 150e6)) {
       console.log('TAVRYL_CPU_LIMIT window_ms='+(now.at-cpuSample.at)+
         ' throttled_ms='+Math.round((now.throttled-cpuSample.throttled)/1000)+
         ' cpu_ms='+Math.round((now.usage-cpuSample.usage)/1000)+
         ' main_run_ms='+Math.round((now.runtime-cpuSample.runtime)/1e6)+
-        ' main_wait_ms='+Math.round((now.wait-cpuSample.wait)/1e6));
+        ' main_wait_ms='+Math.round((now.wait-cpuSample.wait)/1e6)+
+        ' proxy_cpu_ms='+Math.round((now.proxyCpu-cpuSample.proxyCpu)/1000)+
+        ' proxy_loop_max_ms='+Math.round(proxyDelay.max/1e6));
     }
     cpuSample=now;
   } catch { /* CPU accounting is optional on hosts without cgroup v2. */ }
-  finally { cpuReading=false; }
+  finally { cpuReading=false; proxyDelay.reset(); }
 }
-const cpuTimer=setInterval(()=>{if(ready && sockets.size>0)void sampleCpu();else cpuSample=undefined;},1000);
+const cpuTimer=setInterval(()=>{if(ready && sockets.size>0)void sampleCpu();else {cpuSample=undefined;proxyDelay.reset();}},1000);
 cpuTimer.unref();
 const handleAdmin=adminHandler(()=>admin);
 const sockets=new Set();
@@ -48,7 +55,7 @@ const httpServer=http.createServer(async(req,res)=>{
   const allowed=req.method==='GET' && ['/', '/healthz'].includes(req.url);
   res.writeHead(allowed ? (ready ? 200 : 503) : 404,{
     'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18,version:'0.18.28',hostRevision:'probe-guard-2',publicBeta:process.env.TAVRYL_PUBLIC_BETA==='1'} : {error:'not_found'}));
+  res.end(JSON.stringify(allowed ? {game:'Tavryl',status:ready?'ready':'starting',protocol:18,version:'0.18.28',hostRevision:'state-cache-1',publicBeta:process.env.TAVRYL_PUBLIC_BETA==='1'} : {error:'not_found'}));
 });
 httpServer.headersTimeout=10000; httpServer.requestTimeout=10000;
 httpServer.on('upgrade',(req,socket,head)=>{
@@ -124,7 +131,7 @@ try {
   child.on('exit',code=>{if(!stopping)void shutdown(code||1,'game exited');});
   // Snapshot checkpoints on disconnect as well. This is internal persistence,
   // not outbound traffic intended to prevent the hosting service from sleeping.
-  timer=setInterval(()=>{if(ready)store.commit().catch(()=>void shutdown(75,'state snapshot failed'));},2000);
+  timer=setInterval(()=>{if(ready)store.commit({background:true}).catch(()=>void shutdown(75,'state snapshot failed'));},2000);
 } catch(error) {
   // Never include connection strings or raw database errors in public logs.
   console.error('TAVRYL_HOST_START_FAILED',error.code || 'configuration_or_storage');
