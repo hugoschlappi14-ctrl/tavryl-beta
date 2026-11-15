@@ -7,9 +7,9 @@ WORKDIR /app
 COPY hosting/package.json hosting/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 RUN curl --fail --location --retry 3 \
-    https://github.com/hugoschlappi14-ctrl/tavryl-beta/releases/download/v0.18.29/tavryl-server \
+    https://github.com/hugoschlappi14-ctrl/tavryl-beta/releases/download/v0.18.30/tavryl-server \
     --output /app/tavryl-server \
-    && echo '6e2d62ece31c85ba5972fb60888939e4f21f0f00ab59010ad495fd04f44814e5  /app/tavryl-server' | sha256sum --check \
+    && echo 'c78bac09840c14e040cdd7678834426f9c14f2122ae8ebda7d502eb547e50434  /app/tavryl-server' | sha256sum --check \
     && chmod 755 /app/tavryl-server
 COPY hosting/host.mjs hosting/state.mjs hosting/admin-store.mjs hosting/admin-http.mjs hosting/socket-upgrade.mjs hosting/probe-guard.mjs hosting/trace-flow.mjs hosting/admin.html hosting/admin.js hosting/admin.css ./
 ENV TAVRYL_PUBLIC_BETA=1 NODE_ENV=production PORT=10000 XDG_DATA_HOME=/tmp/tavryl-data
