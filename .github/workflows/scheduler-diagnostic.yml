@@ -1,0 +1,25 @@
+name: Linux scheduler measurement validation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scheduler:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate real Linux scheduler counters
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download 4.7.1-stable --repo godotengine/godot --pattern Godot_v4.7.1-stable_linux.x86_64.zip --dir downloads
+          echo 'c7ff14fd28472c8d4f193043de30278dcf7e5241a1dcf7566b02e27addaa33ba  downloads/Godot_v4.7.1-stable_linux.x86_64.zip' | sha256sum --check
+          unzip -q downloads/Godot_v4.7.1-stable_linux.x86_64.zip -d downloads/engine
+          mkdir -p downloads/probe
+          cp testing/mesure_ordonnancement.gd testing/scheduler-test.gd downloads/probe/
+          touch downloads/probe/project.godot
+          chmod +x downloads/engine/Godot_v4.7.1-stable_linux.x86_64
+          downloads/engine/Godot_v4.7.1-stable_linux.x86_64 --headless --path downloads/probe --script res://scheduler-test.gd
