@@ -12,8 +12,10 @@ module.exports=async function endurance(ctx) {
     portalTransitions:0,reconnections:0,deathInterruptions:0,segments};
   let segmentStart=Date.now(), round=0;
   async function collect(label) {
+    const snapshots=[];
+    for(const role of roles)snapshots.push(await wait('fresh telemetry for '+role,()=>read(role),3000));
     const rows=roles.map((role,i)=>{
-      const s=read(role); if(!s)return {missing:true};
+      const s=snapshots[i];
       const times=s.world_times||[], gaps=times.slice(1).map((t,j)=>t-times[j]);
       samples[i].push(...gaps);
       worst.push(...(s.world_stalls||[]).map(x=>({...x,client:i})));
