@@ -384,7 +384,7 @@ async function measureWalk(label) {
     await sleep(1400);
     for (const child of children) if (child.exitCode === null) child.kill();
     fs.writeFileSync(path.join(run,'summary.json'), JSON.stringify(report,null,2));
-    console.log('TAVRYL_TEST_RESULT '+JSON.stringify({start:report.start,version:report.version,checks:report.checks,failure:report.failure||null,movementFailure:report.movementFailure||null,connection:report.connection,reconnect:report.reconnect,worldUpdateIntervalMs:report.worldUpdateIntervalMs,worldUpdatesBeforeRestartMs:report.worldUpdatesBeforeRestartMs,steadyWorldMs:report.steadyWorldMs,worldStalls:report.worldStalls,respawn:report.respawn,spellOnBothClientsObservedMs:report.spellOnBothClientsObservedMs}));
+    console.log('TAVRYL_TEST_RESULT '+JSON.stringify({start:report.start,version:report.version,checks:report.checks,failure:report.failure||null,movementFailure:report.movementFailure||null,connection:report.connection,reconnect:report.reconnect,worldUpdateIntervalMs:report.worldUpdateIntervalMs,worldUpdatesBeforeRestartMs:report.worldUpdatesBeforeRestartMs,steadyWorldMs:report.steadyWorldMs,worldStalls:report.worldStalls,respawn:report.respawn,spellOnBothClientsObservedMs:report.spellOnBothClientsObservedMs,lastClientState:report.lastClientState,lifeEvents:report.lifeEvents}));
     process.exitCode = report.failure || report.movementFailure ? 1 : 0;
   }
 })();
