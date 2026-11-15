@@ -23,6 +23,7 @@ var got := ""
 var stamp := -1
 var route := Vector2.INF
 var chase := ""
+var endurance_defend := false
 var initial := Vector2.ZERO
 var offline_motion := 0.0
 var server_version := ""
@@ -143,6 +144,19 @@ func step() -> void:
 		hold("deplacer_gauche", direction.x < -0.25)
 		hold("deplacer_bas", direction.y > 0.25)
 		hold("deplacer_haut", direction.y < -0.25)
+	if endurance_defend:
+		var nearest: Node2D = null
+		var best := 300.0
+		for entity in net.entites_reseau.values():
+			if not is_instance_valid(entity) or not entity is Node2D or entity.get("points_de_vie") == null or entity.points_de_vie <= 0: continue
+			var d: float = entity.global_position.distance_to(player.global_position)
+			if d < best:
+				best=d; nearest=entity
+		if nearest != null:
+			var aim := InputEventMouseMotion.new()
+			aim.position = nearest.get_global_transform_with_canvas().origin
+			Input.parse_input_event(aim)
+		hold("attaquer",nearest != null and not player.a_terre and not player.en_reapparition)
 	if spell_start > 0 and spell_result < 0:
 		var enemy: Node = net.entites_reseau.get(target)
 		if is_instance_valid(enemy) and enemy.points_de_vie < spell_hp:
@@ -218,6 +232,9 @@ func hold(action: String, pressed: bool) -> void:
 
 func command(data: Dictionary) -> void:
 	match str(data.action):
+		"defend":
+			endurance_defend=bool(data.get("enabled",true))
+			if not endurance_defend: hold("attaquer",false)
 		"reset_metrics":
 			# Bound test-file IO during long sessions; never alter game state.
 			world_gaps.clear(); world_arrivals.clear(); world_stalls.clear(); life_events.clear()

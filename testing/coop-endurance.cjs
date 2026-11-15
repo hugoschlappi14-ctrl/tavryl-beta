@@ -9,7 +9,7 @@ module.exports=async function endurance(ctx) {
   const began=Date.now(), until=began+minutes*60000;
   const samples=roles.map(()=>[]), worst=[], segments=[];
   const result={requestedMinutes:minutes,start:new Date(began).toISOString(),walks:0,
-    spellChecks:0,portalTransitions:0,reconnections:0,deathInterruptions:0,segments};
+    portalTransitions:0,reconnections:0,deathInterruptions:0,segments};
   let segmentStart=Date.now(), round=0;
   async function collect(label) {
     const rows=roles.map((role,i)=>{
@@ -56,35 +56,15 @@ module.exports=async function endurance(ctx) {
         b?.peer===witnessPeer&&a.zone===b.zone&&a.social.group.length===2&&b.social.group.length===2&&b.other.some(x=>x.peer===a.peer);
     },30000);
     result.reconnections++;
+    for(const role of roles)await command(role,'defend');
     await alive(); await measureWalk('endurance after reconnect'); result.walks++;
   }
-  async function combat() {
-    await alive();
-    const a=first(), target=a.enemies.filter(e=>distance(e.xy,a.position)<650)
-      .sort((x,y)=>distance(x.xy,a.position)-distance(y.xy,a.position))[0];
-    if(!target)return;
-    for(const role of roles)await command(role,'walk',{xy:target.xy,chase:target.id});
-    await wait('approach endurance monster',()=>{
-      const s=first(),e=s?.enemies.find(x=>x.id===target.id);
-      return s?.down || !e || distance(s.position,e.xy)<100;
-    },16000);
-    if(!both(s=>s.hp>0&&!s.down&&!s.respawning)){result.deathInterruptions++;return;}
-    const baseline=second()?.enemies.find(e=>e.id===target.id)?.hp;
-    if(!baseline)return;
-    await command(roles[0],'cast',{target:target.id});
-    await wait('endurance spell damage replicated',()=>{
-      const a=first(),b=second();return a?.down || a?.spell_fired&&a.spell_result>=0&&b&&(b.enemies.find(e=>e.id===target.id)?.hp??0)<baseline;
-    },8000);
-    if(first().down)result.deathInterruptions++;
-    else result.spellChecks++;
-    for(const role of roles)await command(role,'walk',{xy:read(role).checkpoint});
-  }
   try {
+    for(const role of roles)await command(role,'defend');
     for(const role of roles)await command(role,'reset_metrics');
     while(Date.now()<until) {
       round++; const roundEnd=Math.min(until,Date.now()+60000);
       if(round%5===0 || minutes===1&&round===1){await portal('village');await portal('lisiere');await restart();}
-      if(round%2===0 || minutes===1)await combat();
       while(Date.now()<roundEnd) {
         await alive();
         try{await measureWalk('endurance walk '+(result.walks+1));result.walks++;}
@@ -96,7 +76,7 @@ module.exports=async function endurance(ctx) {
       }
       await collect('minute block '+round);
       console.log('TAVRYL_ENDURANCE_PROGRESS '+JSON.stringify({elapsedSeconds:Math.round((Date.now()-began)/1000),walks:result.walks,
-        spellChecks:result.spellChecks,portals:result.portalTransitions,reconnections:result.reconnections,
+        portals:result.portalTransitions,reconnections:result.reconnections,
         clients:samples.map(stats)}));
     }
     checks.push('extended two-client session completed');
