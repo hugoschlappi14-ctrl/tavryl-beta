@@ -273,10 +273,8 @@ async function measureWalk(label) {
       report.afterRestart = await measureWalk('after restart');
       checks.push('movement followed in both directions after full client restart');
       if (steadyWalk) {
-        await command(roles[0], 'walk', {xy:[-1990,4160]});
-        await command(roles[1], 'walk', {xy:[-2010,4140]});
-        await wait('both characters in the agreed movement test area', () =>
-          both(state => !state.down && !state.respawning && distance(state.position,[-1990,4160]) < 55), 45000);
+        // Measure relative walks from the restored checkpoint. A forced regroup
+        // can make idle level-1 probes die before latency sampling begins.
         const firstCount = first().world_times.length;
         const secondCount = second().world_times.length;
         report.steadyWalk = [];
