@@ -1,0 +1,41 @@
+name: Public coop diagnostic
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: public-coop-diagnostic
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download verified public game and official engine
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download 4.7.1-stable --repo godotengine/godot --pattern Godot_v4.7.1-stable_win64.exe.zip --dir downloads
+          gh release download v0.18.21 --repo hugoschlappi14-ctrl/tavryl-beta --pattern Tavryl-0.18.21-Windows.zip --dir downloads
+          if ((Get-FileHash downloads/Godot_v4.7.1-stable_win64.exe.zip).Hash -ne 'c7a289051eaefb460b0106b60e9cd5bee0ef55fd102dcb2bed1eb356cf3d90a1') { throw 'Engine digest mismatch' }
+          if ((Get-FileHash downloads/Tavryl-0.18.21-Windows.zip).Hash -ne '12d5b56d061acdbce2c4b0ce5c5d9c758d9b537e94dad0276a131e66661a4352') { throw 'Game digest mismatch' }
+          Expand-Archive downloads/Godot_v4.7.1-stable_win64.exe.zip downloads/engine
+          Expand-Archive downloads/Tavryl-0.18.21-Windows.zip downloads/game
+      - name: Two independent coop runs
+        shell: pwsh
+        run: |
+          $env:TAVRYL_TEST_ENGINE=(Get-ChildItem downloads/engine -Recurse -Filter '*console.exe' | Select-Object -First 1).FullName
+          $env:TAVRYL_TEST_PACK=(Get-ChildItem downloads/game -Recurse -Filter 'Tavryl.exe' | Select-Object -First 1).FullName
+          $env:TAVRYL_EXPECT_SERVER='0.18.29'
+          $env:TAVRYL_TEST_CLIENT_VERSION='0.18.21'
+          $failed=$false
+          foreach ($round in 1..2) {
+            Write-Output "TAVRYL_TEST_ROUND $round"
+            node testing/coop-public.cjs --fresh --restart-in-party --trace --steady-walk --respawn-check
+            if ($LASTEXITCODE -ne 0) { $failed=$true }
+          }
+          if ($failed) { exit 1 }
