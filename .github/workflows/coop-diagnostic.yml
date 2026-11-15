@@ -1,6 +1,12 @@
 name: Public coop diagnostic
 on:
   workflow_dispatch:
+    inputs:
+      endurance_minutes:
+        description: 'Continuous two-client session after the ordinary checks'
+        type: choice
+        default: '0'
+        options: ['0', '1', '20']
 permissions:
   contents: read
 concurrency:
@@ -9,7 +15,7 @@ concurrency:
 jobs:
   test:
     runs-on: windows-2025
-    timeout-minutes: 12
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,10 +36,12 @@ jobs:
         run: |
           $env:TAVRYL_TEST_ENGINE=(Get-ChildItem downloads/engine -Recurse -Filter '*console.exe' | Select-Object -First 1).FullName
           $env:TAVRYL_TEST_PACK=(Get-ChildItem downloads/game -Recurse -Filter 'Tavryl.exe' | Select-Object -First 1).FullName
-          $env:TAVRYL_EXPECT_SERVER='0.18.31'
+          $env:TAVRYL_EXPECT_SERVER='0.18.32'
           $env:TAVRYL_TEST_CLIENT_VERSION='0.18.21'
+          $env:TAVRYL_ENDURANCE_MINUTES='${{ inputs.endurance_minutes }}'
           $failed=$false
-          foreach ($round in 1..2) {
+          $rounds=if ([int]$env:TAVRYL_ENDURANCE_MINUTES -gt 0) { @(1) } else { @(1,2) }
+          foreach ($round in $rounds) {
             Write-Output "TAVRYL_TEST_ROUND $round"
             node testing/coop-public.cjs --fresh --restart-in-party --trace --steady-walk --respawn-check
             if ($LASTEXITCODE -ne 0) { $failed=$true }

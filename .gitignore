@@ -2,3 +2,4 @@ node_modules/
 *.key
 *.env
 *-private.json
+/testing/coop-[0-9]*/

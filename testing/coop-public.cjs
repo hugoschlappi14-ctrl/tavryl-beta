@@ -19,6 +19,7 @@ const restartInParty = process.argv.includes('--restart-in-party');
 const trace = process.argv.includes('--trace');
 const exerciseFriendship = process.argv.includes('--exercise-friendship');
 const steadyWalk = process.argv.includes('--steady-walk');
+const enduranceMinutes = Math.max(0, Math.min(30, Number(process.env.TAVRYL_ENDURANCE_MINUTES) || 0));
 const report = { version:clientVersion, start:new Date().toISOString(), freshTestIdentities:fresh, checks };
 let sequence = 0;
 let temporaryFriendship = false;
@@ -352,6 +353,12 @@ async function measureWalk(label) {
         second()?.other.some(actor => actor.seq >= 20000));
       checks.push('movement sequence above 20000 sent before process restart');
     }
+    if (enduranceMinutes > 0) {
+      report.endurance = await require('./coop-endurance.cjs')({minutes:enduranceMinutes,roles,read,command,wait,sleep,stats,distance,
+        measureWalk,children,start,run,checks,first,second,both,
+        getLeader:()=>leaderProcess,setLeader:value=>{leaderProcess=value;}});
+      if (!report.endurance.completed) throw Error(report.endurance.failure || 'endurance duration not completed');
+    }
   } catch (error) {
     report.failure = error.message;
   } finally {
@@ -382,7 +389,7 @@ async function measureWalk(label) {
     await sleep(1400);
     for (const child of children) if (child.exitCode === null) child.kill();
     fs.writeFileSync(path.join(run,'summary.json'), JSON.stringify(report,null,2));
-    console.log('TAVRYL_TEST_RESULT '+JSON.stringify({start:report.start,version:report.version,checks:report.checks,failure:report.failure||null,movementFailure:report.movementFailure||null,connection:report.connection,reconnect:report.reconnect,worldUpdateIntervalMs:report.worldUpdateIntervalMs,worldUpdatesBeforeRestartMs:report.worldUpdatesBeforeRestartMs,steadyWorldMs:report.steadyWorldMs,worldStalls:report.worldStalls,respawn:report.respawn,spellOnBothClientsObservedMs:report.spellOnBothClientsObservedMs,lastClientState:report.lastClientState,lifeEvents:report.lifeEvents}));
+    console.log('TAVRYL_TEST_RESULT '+JSON.stringify({start:report.start,version:report.version,checks:report.checks,failure:report.failure||null,movementFailure:report.movementFailure||null,connection:report.connection,reconnect:report.reconnect,worldUpdateIntervalMs:report.worldUpdateIntervalMs,worldUpdatesBeforeRestartMs:report.worldUpdatesBeforeRestartMs,steadyWorldMs:report.steadyWorldMs,worldStalls:report.worldStalls,respawn:report.respawn,spellOnBothClientsObservedMs:report.spellOnBothClientsObservedMs,lastClientState:report.lastClientState,lifeEvents:report.lifeEvents,endurance:report.endurance}));
     process.exitCode = report.failure || report.movementFailure ? 1 : 0;
   }
 })();

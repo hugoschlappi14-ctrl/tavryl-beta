@@ -81,7 +81,8 @@ func run() -> void:
 	current_scene.get_node("Interface").selectionner_classe_par_index(int(role.trim_prefix("Client")))
 	current_scene.get_node("GestionQuetes").accepter_quete("serment_du_chasseur")
 	process_frame.connect(step)
-	create_timer(210).timeout.connect(func(): quit(2))
+	var endurance_minutes := clampi(int(OS.get_environment("TAVRYL_ENDURANCE_MINUTES")), 0, 30)
+	create_timer(210 + endurance_minutes * 60).timeout.connect(func(): quit(2))
 
 func step() -> void:
 	var now := Time.get_ticks_msec()
@@ -201,6 +202,8 @@ func step() -> void:
 		"zone": net.obtenir_zone_position(player.global_position), "safe": player.dans_zone_sure,
 		"known_zone": net.zone_locale_connue, "sequence_local": net.sequence_locale,
 		"other": other, "enemies": enemies,
+		"avatar_debug": net.avatars_distants.values().map(func(a): return {"peer":a.identifiant_pair,"visible":a.visible,"zone":a.get_meta("zone_reseau", ""),"xy":[a.global_position.x,a.global_position.y],"seq":a.get_meta("derniere_sequence",-1)}),
+		"roster_zones": net.informations_joueurs.keys().map(func(p): return {"peer":p,"zone":net.informations_joueurs[p].get("zone","")}),
 		"stamp": stamp, "sent": sent, "got": got,
 		"spell_start": spell_start, "spell_result": spell_result, "spell_fired": spell_fired,
 	}
@@ -215,6 +218,13 @@ func hold(action: String, pressed: bool) -> void:
 
 func command(data: Dictionary) -> void:
 	match str(data.action):
+		"reset_metrics":
+			# Bound test-file IO during long sessions; never alter game state.
+			world_gaps.clear(); world_arrivals.clear(); world_stalls.clear(); life_events.clear()
+			remote_motion.clear(); track_frames.clear(); track_started = -1
+		"halt":
+			route = Vector2.INF; chase = ""
+			for key in ["deplacer_droite","deplacer_gauche","deplacer_bas","deplacer_haut"]: Input.action_release(key)
 		"respawn_test":
 			# Isolated test profile only: exercise the ordinary death/respawn path.
 			route=Vector2.INF; chase=""
@@ -244,7 +254,7 @@ func command(data: Dictionary) -> void:
 					break
 			for button in world.liste_teleports.get_children():
 				for connection in button.pressed.get_connections():
-					if connection.callable.get_bound_arguments() == ["lisiere"]:
+					if connection.callable.get_bound_arguments() == [str(data.get("zone", "lisiere"))]:
 						button.pressed.emit()
 						return
 		"cast":
