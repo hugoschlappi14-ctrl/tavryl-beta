@@ -20,6 +20,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Verify timing aggregation across telemetry blocks
+        run: node --test testing/world-timing.test.cjs
       - name: Download verified public game and official engine
         shell: pwsh
         env:

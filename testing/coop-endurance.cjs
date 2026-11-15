@@ -1,5 +1,6 @@
 const fs=require('node:fs');
 const path=require('node:path');
+const createTimingAccumulator=require('./world-timing.cjs');
 
 // Drives the public client through its ordinary controls. Never changes health,
 // damage, cooldowns, speed, target rules, collision or server simulation.
@@ -8,6 +9,7 @@ module.exports=async function endurance(ctx) {
     children,start,run,checks,first,second,both,getLeader,setLeader}=ctx;
   const began=Date.now(), until=began+minutes*60000;
   const samples=roles.map(()=>[]), worst=[], segments=[];
+  const timing=createTimingAccumulator(), generations=roles.map(()=>0);
   const result={requestedMinutes:minutes,start:new Date(began).toISOString(),walks:0,
     portalTransitions:0,reconnections:0,deathInterruptions:0,segments};
   let segmentStart=Date.now(), round=0;
@@ -18,9 +20,9 @@ module.exports=async function endurance(ctx) {
       const s=snapshots[i];
       // Preserve only numeric event timings, never account/profile data. These
       // distinguish delayed delivery from sampling several updates in one frame.
-      fs.appendFileSync(path.join(run,'timing-ledger.jsonl'),JSON.stringify({client:i,label,
+      fs.appendFileSync(path.join(run,'timing-ledger.jsonl'),JSON.stringify({client:i,label,generation:generations[i],
         arrivals:s.world_arrivals||[],stalls:s.world_stalls||[]})+'\n');
-      const times=s.world_times||[], gaps=times.slice(1).map((t,j)=>t-times[j]);
+      const gaps=timing.collect(i,s.world_times||[]);
       samples[i].push(...gaps);
       worst.push(...(s.world_stalls||[]).map(x=>({...x,client:i})));
       return {zone:s.zone,mode:s.mode,world:stats(gaps)};
@@ -56,6 +58,7 @@ module.exports=async function endurance(ctx) {
     children.splice(children.indexOf(proc),1);
     await wait('witness stayed connected',()=>second()?.mode===3&&second().peer===witnessPeer&&!second().other.some(a=>a.peer===oldPeer),10000);
     for(const suffix of ['-state.json','-command.json'])fs.rmSync(path.join(run,roles[0]+suffix),{force:true});
+    timing.reset(0); generations[0]++;
     setLeader(start(roles[0],true));
     await wait('endurance reconnect restored party and world',()=>{
       const a=first(),b=second();return a?.mode===3&&a.peer!==oldPeer&&a.social.code===code&&a.world_ms>=0&&
