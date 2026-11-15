@@ -47,3 +47,11 @@ jobs:
             if ($LASTEXITCODE -ne 0) { $failed=$true }
           }
           if ($failed) { exit 1 }
+      - name: Preserve numeric timing evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coop-timing-evidence
+          path: testing/coop-*/timing-ledger.jsonl
+          retention-days: 7
+          if-no-files-found: ignore

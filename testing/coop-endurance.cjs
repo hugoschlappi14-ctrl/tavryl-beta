@@ -16,6 +16,10 @@ module.exports=async function endurance(ctx) {
     for(const role of roles)snapshots.push(await wait('fresh telemetry for '+role,()=>read(role),3000));
     const rows=roles.map((role,i)=>{
       const s=snapshots[i];
+      // Preserve only numeric event timings, never account/profile data. These
+      // distinguish delayed delivery from sampling several updates in one frame.
+      fs.appendFileSync(path.join(run,'timing-ledger.jsonl'),JSON.stringify({client:i,label,
+        arrivals:s.world_arrivals||[],stalls:s.world_stalls||[]})+'\n');
       const times=s.world_times||[], gaps=times.slice(1).map((t,j)=>t-times[j]);
       samples[i].push(...gaps);
       worst.push(...(s.world_stalls||[]).map(x=>({...x,client:i})));
