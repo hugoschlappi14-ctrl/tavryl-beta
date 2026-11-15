@@ -30,7 +30,7 @@ jobs:
         run: |
           $env:TAVRYL_TEST_ENGINE=(Get-ChildItem downloads/engine -Recurse -Filter '*console.exe' | Select-Object -First 1).FullName
           $env:TAVRYL_TEST_PACK=(Get-ChildItem downloads/game -Recurse -Filter 'Tavryl.exe' | Select-Object -First 1).FullName
-          $env:TAVRYL_EXPECT_SERVER='0.18.30'
+          $env:TAVRYL_EXPECT_SERVER='0.18.31'
           $env:TAVRYL_TEST_CLIENT_VERSION='0.18.21'
           $failed=$false
           foreach ($round in 1..2) {
