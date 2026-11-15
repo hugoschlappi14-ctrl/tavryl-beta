@@ -36,7 +36,7 @@ jobs:
         run: |
           $env:TAVRYL_TEST_ENGINE=(Get-ChildItem downloads/engine -Recurse -Filter '*console.exe' | Select-Object -First 1).FullName
           $env:TAVRYL_TEST_PACK=(Get-ChildItem downloads/game -Recurse -Filter 'Tavryl.exe' | Select-Object -First 1).FullName
-          $env:TAVRYL_EXPECT_SERVER='0.18.32'
+          $env:TAVRYL_EXPECT_SERVER='0.18.33'
           $env:TAVRYL_TEST_CLIENT_VERSION='0.18.21'
           $env:TAVRYL_ENDURANCE_MINUTES='${{ inputs.endurance_minutes }}'
           $failed=$false
